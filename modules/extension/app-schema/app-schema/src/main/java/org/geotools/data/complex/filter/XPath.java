@@ -755,7 +755,14 @@ public class XPath extends XPathUtil {
         if (value instanceof Literal literal) {
             return literal.evaluate(literal.getValue(), binding);
         }
-        return FF.literal(value).evaluate(value, binding);
+        Object convertedValue = FF.literal(value).evaluate(value, binding);
+        if (value instanceof Geometry && Geometry.class.isAssignableFrom(binding) && convertedValue == null) {
+            throw new IllegalArgumentException("Cannot convert geometry from "
+                    + value.getClass().getSimpleName()
+                    + " to "
+                    + binding.getSimpleName());
+        }
+        return convertedValue;
     }
 
     /** Get base (non-collection) type of simple content. */

@@ -48,6 +48,7 @@ import org.locationtech.jts.geom.MultiPoint;
 import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
+import org.locationtech.jts.operation.linemerge.LineMerger;
 
 /**
  * Converter factory performing conversions among JTS geometries of different types.
@@ -196,7 +197,16 @@ public class GeometryTypeConverterFactory implements ConverterFactory {
                     if (sourceGeometry.isEmpty()) destGeometry = gFac.createLineString(new Coordinate[0]);
                     else if (source instanceof MultiLineString string && sourceGeometry.getNumGeometries() == 1)
                         destGeometry = string.getGeometryN(0).copy();
-                    else {
+                    else if (source instanceof MultiLineString multiLineString) {
+                        LineMerger merger = new LineMerger();
+                        merger.add(multiLineString);
+                        List<LineString> merged = new ArrayList<>(merger.getMergedLineStrings());
+                        if (merged.size() != 1) {
+                            throw new IllegalArgumentException(
+                                    "Cannot convert a MultiLineString to a single LineString without changing its topology");
+                        }
+                        destGeometry = merged.get(0);
+                    } else {
                         if (LOGGER.isLoggable(Level.FINE))
                             LOGGER.fine("Converting Geometry "
                                     + source.toString()

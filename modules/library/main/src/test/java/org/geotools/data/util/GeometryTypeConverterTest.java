@@ -24,6 +24,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.MultiLineString;
 import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.io.WKTReader;
 
@@ -79,6 +81,10 @@ public class GeometryTypeConverterTest {
             source.setSRID(4326);
             Class<?> target = Class.forName("org.locationtech.jts.geom." + parts[1]);
             String expected = parts[2];
+            if ("IllegalArgumentException".equals(expected)) {
+                Assert.assertThrows(IllegalArgumentException.class, () -> convert(source, target));
+                continue;
+            }
             Geometry converted = convert(source, target);
             Assert.assertEquals(expected, converted.toText());
             Assert.assertEquals(4326, converted.getSRID());
@@ -141,6 +147,61 @@ public class GeometryTypeConverterTest {
         Assert.assertEquals(pol, mp.getGeometryN(0));
         Assert.assertNull(mp.getGeometryN(0).getUserData());
         Assert.assertEquals(userData, mp.getUserData());
+    }
+
+    @Test
+    public void testDisconnectedMultiLineStringToLineStringIsRejected() throws Exception {
+        MultiLineString source =
+                (MultiLineString) wktReader.read("MULTILINESTRING ((0 0, 1 1, 2 1), (10 10, 11 11, 12 11))");
+        Converter converter = getConverter(source, LineString.class);
+
+        try {
+            LineString converted = converter.convert(source, LineString.class);
+            Assert.fail("Expected conversion to be rejected, but got " + converted);
+        } catch (IllegalArgumentException expected) {
+            // Expected: disconnected components cannot be represented by a LineString.
+        }
+    }
+
+    @Test
+    public void testConnectedMultiLineStringToLineStringIsMerged() throws Exception {
+        MultiLineString source = (MultiLineString) wktReader.read("MULTILINESTRING ((0 0, 1 1, 2 1), (2 1, 3 2, 4 2))");
+
+        LineString converted = convertToLineString(source);
+
+        Assert.assertEquals("LINESTRING (0 0, 1 1, 2 1, 3 2, 4 2)", converted.toText());
+    }
+
+    @Test
+    public void testReversedMultiLineStringComponentsAreMerged() throws Exception {
+        MultiLineString source = (MultiLineString) wktReader.read("MULTILINESTRING ((0 0, 1 1, 2 1), (4 2, 3 2, 2 1))");
+
+        LineString converted = convertToLineString(source);
+
+        Assert.assertEquals("LINESTRING (0 0, 1 1, 2 1, 3 2, 4 2)", converted.toText());
+    }
+
+    @Test
+    public void testUnorderedMultiLineStringComponentsAreMerged() throws Exception {
+        MultiLineString source =
+                (MultiLineString) wktReader.read("MULTILINESTRING ((2 1, 3 2), (4 2, 3 2), (0 0, 1 1), (2 1, 1 1))");
+
+        LineString converted = convertToLineString(source);
+
+        Assert.assertEquals("LINESTRING (0 0, 1 1, 2 1, 3 2, 4 2)", converted.toText());
+    }
+
+    @Test
+    public void testBranchedMultiLineStringToLineStringIsRejected() throws Exception {
+        MultiLineString source =
+                (MultiLineString) wktReader.read("MULTILINESTRING ((0 0, 1 1), (1 1, 2 2), (1 1, 2 0))");
+
+        Assert.assertThrows(IllegalArgumentException.class, () -> convertToLineString(source));
+    }
+
+    private LineString convertToLineString(MultiLineString source) throws Exception {
+        Converter converter = getConverter(source, LineString.class);
+        return converter.convert(source, LineString.class);
     }
 
     @Test
